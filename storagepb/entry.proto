@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+package leaderelection.storagepb;
+option go_package = "storagepb";
+
+message RaceEntry {
+    uint64 election_number = 1;
+    string leader_id = 2;
+    string host_port = 3;
+    google.protobuf.Timestamp term_expiry = 4;
+    // connection_parameters should be used as a side-channel for
+    // leader-election metadata for the legrpc package, we'll use it for storing
+    // the GRPC ServiceConfig (or nothing).
+    // For other protocols, it may be something else.
+    bytes connection_parameters = 5;
+}
