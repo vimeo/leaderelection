@@ -2,12 +2,15 @@ package gcs
 
 import (
 	"context"
+	"encoding/base64"
 	"os"
 	"strconv"
 	"testing"
 	"time"
 
 	"cloud.google.com/go/storage"
+	"google.golang.org/api/option"
+
 	"github.com/vimeo/leaderelection"
 	"github.com/vimeo/leaderelection/entry"
 )
@@ -18,9 +21,19 @@ func TestDecider(t *testing.T) {
 		t.Skip("empty or undefined GCS_TEST_BUCKET environment variable, skipping test")
 	}
 
+	gcsClientOpts := []option.ClientOption{}
+	if credsEnv := os.Getenv("GCS_SERVICE_ACCOUNT_JSON"); credsEnv != "" {
+		credsJSON, decodeErr := base64.StdEncoding.DecodeString(credsEnv)
+		if decodeErr != nil {
+			t.Fatalf("failed to decode credentials: %s", decodeErr)
+		}
+		gcsClientOpts = append(gcsClientOpts, option.WithCredentialsJSON(credsJSON))
+		t.Log("using credentials from environment")
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	client, clientErr := storage.NewClient(ctx)
+	client, clientErr := storage.NewClient(ctx, gcsClientOpts...)
 	if clientErr != nil {
 		t.Fatalf("failed to construct GCS client")
 	}
