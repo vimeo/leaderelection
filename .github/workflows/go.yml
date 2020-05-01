@@ -47,3 +47,8 @@ jobs:
         GCS_TEST_BUCKET: ${{secrets.GCS_TEST_BUCKET}}
         GCS_SERVICE_ACCOUNT_JSON: ${{secrets.gcs_service_account_creds}}
       run: go test -race -mod=readonly -count 2 ./...
+
+    - name: Root Test 10k iterations
+      env:
+        GO111MODULE: on
+      run: go test -mod=readonly -count 10000 .
