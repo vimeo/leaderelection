@@ -1,3 +1,10 @@
+// Package leaderelection provides a simple to configure mechanism for electing
+// a leader among processes.
+//
+// There are two real entrypoints within this package: Config.Acquire() and
+// WatchConfig.Watch(). Config.Acquire() is used for acquiring leadership,
+// while `WatchConfig.Watch` is for observing leadership transitions and
+// status.
 package leaderelection
 
 import (
@@ -22,7 +29,7 @@ type RaceDecider interface {
 	ReadCurrent(ctx context.Context) (*entry.RaceEntry, error)
 }
 
-// TimeView is a value containing a time.Time
+// TimeView is a value containing an atomically updatable time.Time
 type TimeView struct {
 	t atomic.Value
 }
