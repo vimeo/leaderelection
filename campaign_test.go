@@ -2,6 +2,7 @@ package leaderelection
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"os"
 	"strconv"
@@ -722,4 +723,49 @@ func TestMultipleContendersWithFakeClockAndSkew(t *testing.T) {
 	}
 
 	cancel()
+}
+
+func ExampleConfig_Acquire() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	d := memory.NewDecider()
+
+	now := time.Date(2020, 5, 6, 0, 0, 0, 0, time.UTC)
+	fc := clocks.NewFakeClock(now)
+
+	electedCh := make(chan struct{})
+	c := Config{
+		Decider:  d,
+		HostPort: "127.0.0.1:8080",
+		LeaderID: "yabadabadoo",
+		OnElected: func(ctx context.Context, tv *TimeView) {
+			fmt.Println("I won!", tv.Get())
+			close(electedCh)
+		},
+		OnOusting: func(ctx context.Context) {
+			fmt.Println("I lost!")
+		},
+		LeaderChanged: func(ctx context.Context, entry entry.RaceEntry) {
+			fmt.Printf("%q won\n", entry.LeaderID)
+		},
+		TermLength:   time.Minute * 30,
+		MaxClockSkew: time.Second * 10,
+		Clock:        fc,
+	}
+	acquireCh := make(chan error, 1)
+	go func() {
+		acquireCh <- c.Acquire(ctx)
+	}()
+
+	fc.AwaitSleepers(1)
+	<-electedCh
+	fc.Advance(c.TermLength / 2)
+
+	cancel()
+	<-acquireCh
+
+	// Unordered output:
+	// I won! 2020-05-06 00:30:00 +0000 UTC
+	// I lost!
+	// "" won
 }
