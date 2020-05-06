@@ -2,6 +2,7 @@ package leaderelection
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -153,4 +154,43 @@ func TestObserverWithMultipleContendersAndFakeClock(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+func ExampleWatchConfig_Watch() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	d := memory.NewDecider()
+	now := time.Date(2020, 5, 6, 0, 0, 0, 0, time.UTC)
+	fc := clocks.NewFakeClock(now)
+
+	watchConfig := WatchConfig{
+		Decider: d,
+		Clock:   fc,
+	}
+
+	c, _ := d.ReadCurrent(ctx)
+
+	d.WriteEntry(ctx, &entry.RaceEntry{
+		LeaderID:         "fimbat",
+		HostPort:         "test:80",
+		TermExpiry:       now.Add(time.Hour),
+		ElectionNumber:   c.ElectionNumber + 1,
+		ConnectionParams: nil,
+		Token:            c.Token,
+	})
+
+	ch := make(chan struct{})
+	go func() {
+		defer close(ch)
+		_ = watchConfig.Watch(ctx, func(ctx context.Context, e entry.RaceEntry) {
+			fmt.Println(e.HostPort, e.TermExpiry)
+		})
+	}()
+
+	fc.AwaitSleepers(1)
+	cancel()
+	<-ch
+
+	// Output:
+	// test:80 2020-05-06 01:00:00 +0000 UTC
 }
