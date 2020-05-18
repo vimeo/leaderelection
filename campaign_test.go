@@ -771,6 +771,10 @@ func ExampleConfig_Acquire() {
 	<-electedCh
 	fc.Advance(c.TermLength / 2)
 
+	// Wait for the lease renewal to happen before cancelling (so the
+	// output is predictable)
+	fc.AwaitSleepers(1)
+
 	cancel()
 	// Acquire blocks until all callbacks return (there's an internal WaitGroup)
 	<-acquireCh
