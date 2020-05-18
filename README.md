@@ -28,11 +28,11 @@ some use-cases may be able to ignore them)
 The `TermLength` is the length of time that a leader acquires leadership for,
 and the length of any extension. This duration should be long enough to get
 useful work done, but short enough that you won't have a problem if the leader
-dies and no one takes over the remainder of the leas term. The `Config.Acquire`
+dies and no one takes over the remainder of the lease term. The `Config.Acquire`
 method takes care of extending the lease twice per term to reduce the likelihood
 of spuriously losing the lock.
 
-`MaxClockSkew` is specifies the corrections added to and subtracted from sleeps
+`MaxClockSkew` specifies the corrections added to and subtracted from sleeps
 and leases to account for a lack of perfect synchronization among the clocks of
 all candidates.
 
@@ -66,7 +66,7 @@ the future.
 The [`gcs`] [`RaceDecider`] is the only currently usable implementation. It
 requires a Google Cloud Storage client, a bucket and an object.
 
-In Tests, one can use the [`memory`] [`RaceDecider`], as that implementation
+In tests, one can use the [`memory`] [`RaceDecider`], as that implementation
 is trivially fast and lacks any external dependencies, but doesn't work outside
 a single process.
 

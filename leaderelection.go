@@ -39,7 +39,7 @@ func (t *TimeView) Get() time.Time {
 	return t.t.Load().(time.Time)
 }
 
-// Set sets the current value of hte encapsulated timestamp
+// Set sets the current value of the encapsulated timestamp
 // Exported so clients can change the values in tests
 func (t *TimeView) Set(v time.Time) {
 	t.t.Store(v)
