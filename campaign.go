@@ -126,7 +126,7 @@ const jitterTermMaxFraction = 0.1
 
 func (c *campaign) manageWin(ctx context.Context, winningEntry *entry.RaceEntry, wg *sync.WaitGroup) (*entry.RaceEntry, error) {
 	// we won!
-	tv := TimeView{}
+	tv := TimeView{clock: c.clock}
 	tv.Set(winningEntry.TermExpiry)
 	// run the elected callback in a background goroutine and cancel the
 	// context on ousting

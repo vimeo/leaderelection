@@ -733,17 +733,27 @@ func ExampleConfig_Acquire() {
 	now := time.Date(2020, 5, 6, 0, 0, 0, 0, time.UTC)
 	fc := clocks.NewFakeClock(now)
 
+	tvLeaderIndicator := (*TimeView)(nil)
 	electedCh := make(chan struct{})
 	c := Config{
 		Decider:  d,
 		HostPort: "127.0.0.1:8080",
 		LeaderID: "yabadabadoo",
 		OnElected: func(ctx context.Context, tv *TimeView) {
-			fmt.Println("I won!", tv.Get())
+			fmt.Printf("I won! Leader term expiration: %s; held: %t\n",
+				tv.Get(), tv.ValueInFuture())
+			tvLeaderIndicator = tv
 			close(electedCh)
 		},
 		OnOusting: func(ctx context.Context) {
-			fmt.Println("I lost!")
+			// make sure we've already set `tvLeaderIndictor` before touching it
+			<-electedCh
+			fmt.Printf("I lost! Holding Lock: %t; expires: %s\n",
+				// Note that ValueInFuture will return true
+				// here because the clock is still within the
+				// term.
+				tvLeaderIndicator.ValueInFuture(),
+				tvLeaderIndicator.Get())
 		},
 		LeaderChanged: func(ctx context.Context, entry entry.RaceEntry) {
 			fmt.Printf("%q won\n", entry.LeaderID)
@@ -762,10 +772,17 @@ func ExampleConfig_Acquire() {
 	fc.Advance(c.TermLength / 2)
 
 	cancel()
+	// Acquire blocks until all callbacks return (there's an internal WaitGroup)
 	<-acquireCh
+	// advance past the end of the current term (after an extension)
+	fc.Advance(c.TermLength + time.Minute)
+	fmt.Printf("Still Leading: %t; expiry: %s; current time: %s\n",
+		tvLeaderIndicator.ValueInFuture(),
+		tvLeaderIndicator.Get(), fc.Now())
 
 	// Unordered output:
-	// I won! 2020-05-06 00:30:00 +0000 UTC
-	// I lost!
+	// I won! Leader term expiration: 2020-05-06 00:30:00 +0000 UTC; held: true
+	// I lost! Holding Lock: true; expires: 2020-05-06 00:45:00 +0000 UTC
 	// "" won
+	// Still Leading: false; expiry: 2020-05-06 00:45:00 +0000 UTC; current time: 2020-05-06 00:46:00 +0000 UTC
 }
