@@ -79,6 +79,9 @@ type Config struct {
 	// The context is cancelled when the lock is lost.
 	// The expirationTime argument will contain the expiration time and its
 	// contents will be updated as the term expiration gets extended.
+	// One should use the ValueInFuture method on TimeView to verify that
+	// the lock is still held before doing anything that requires the
+	// leader role.
 	OnElected func(ctx context.Context, expirationTime *TimeView)
 	// OnOusting is called when leadership is lost.
 	OnOusting func(ctx context.Context)

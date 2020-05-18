@@ -59,7 +59,8 @@ second argument to `OnElected` is a `*TimeView` containing the current
 expiration time. This pointer tracks an atomic value which is updated every time
 the lease is extended.  Before taking any action that requires holding
 leadership, one should always check that the time returned by `t.Get()` is in
-the future.
+the future. `TimeView` has a `ValueInFuture()` convenience-method to facilitate
+such checks for quick operations against the correct clock.
 
 ## Picking a `RaceDecider`
 
