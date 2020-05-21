@@ -1,3 +1,10 @@
+// Package leaderelection provides a simple to configure mechanism for electing
+// a leader among processes.
+//
+// There are two real entrypoints within this package: Config.Acquire() and
+// WatchConfig.Watch(). Config.Acquire() is used for acquiring leadership,
+// while `WatchConfig.Watch` is for observing leadership transitions and
+// status.
 package leaderelection
 
 import (
@@ -22,9 +29,29 @@ type RaceDecider interface {
 	ReadCurrent(ctx context.Context) (*entry.RaceEntry, error)
 }
 
-// TimeView is a value containing a time.Time
+// TimeView is a value containing an atomically updatable time.Time
 type TimeView struct {
-	t atomic.Value
+	t     atomic.Value
+	clock clocks.Clock
+}
+
+// NewTimeView constructs a TimeView
+func NewTimeView(c clocks.Clock) *TimeView {
+	if c == nil {
+		c = clocks.DefaultClock()
+	}
+	now := c.Now()
+	tv := TimeView{
+		clock: c,
+	}
+	tv.Set(now)
+	return &tv
+
+}
+
+// Clock returns the clocks.Clock instance against-which times are measured.
+func (t *TimeView) Clock() clocks.Clock {
+	return t.clock
 }
 
 // Get provides the current value of the encapsulated timestamp
@@ -32,10 +59,17 @@ func (t *TimeView) Get() time.Time {
 	return t.t.Load().(time.Time)
 }
 
-// Set sets the current value of hte encapsulated timestamp
+// Set sets the current value of the encapsulated timestamp
 // Exported so clients can change the values in tests
 func (t *TimeView) Set(v time.Time) {
 	t.t.Store(v)
+}
+
+// ValueInFuture compares the currently held timestamp against the current
+// timestamp associated with the contained clock. (equivalent to still owning
+// leadership as returned by Acquire)
+func (t *TimeView) ValueInFuture() bool {
+	return t.clock.Now().Before(t.Get())
 }
 
 // Config defines the common fields of configs for various leaderelection
@@ -45,8 +79,13 @@ type Config struct {
 	// The context is cancelled when the lock is lost.
 	// The expirationTime argument will contain the expiration time and its
 	// contents will be updated as the term expiration gets extended.
-	OnElected     func(ctx context.Context, expirationTime *TimeView)
-	OnOusting     func(ctx context.Context)
+	// One should use the ValueInFuture method on TimeView to verify that
+	// the lock is still held before doing anything that requires the
+	// leader role.
+	OnElected func(ctx context.Context, expirationTime *TimeView)
+	// OnOusting is called when leadership is lost.
+	OnOusting func(ctx context.Context)
+	// LeaderChanged is called when another candidate becomes leader.
 	LeaderChanged func(ctx context.Context, entry entry.RaceEntry)
 
 	LeaderID string
