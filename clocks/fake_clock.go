@@ -118,7 +118,7 @@ func (f *FakeClock) Until(t time.Time) time.Duration {
 	return t.Sub(f.Now())
 }
 
-func (f *FakeClock) setAbsoluteWaiter(until time.Time) <-chan struct{} {
+func (f *FakeClock) setAbsoluteWaiter(until time.Time) chan struct{} {
 	ch := make(chan struct{})
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -132,11 +132,19 @@ func (f *FakeClock) setAbsoluteWaiter(until time.Time) <-chan struct{} {
 	return ch
 }
 
+func (f *FakeClock) removeWaiter(ch chan struct{}) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.sleepers, ch)
+	f.cond.Broadcast()
+}
+
 // SleepUntil blocks until either ctx expires or until arrives.
 // Return value is false if context-cancellation/expiry prompted an
 // early return
 func (f *FakeClock) SleepUntil(ctx context.Context, until time.Time) bool {
 	ch := f.setAbsoluteWaiter(until)
+	defer f.removeWaiter(ch)
 	select {
 	case <-ch:
 		return true
@@ -145,7 +153,7 @@ func (f *FakeClock) SleepUntil(ctx context.Context, until time.Time) bool {
 	}
 }
 
-func (f *FakeClock) setRelativeWaiter(dur time.Duration) <-chan struct{} {
+func (f *FakeClock) setRelativeWaiter(dur time.Duration) chan struct{} {
 	ch := make(chan struct{})
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -160,6 +168,7 @@ func (f *FakeClock) SleepFor(ctx context.Context, dur time.Duration) bool {
 		return true
 	}
 	ch := f.setRelativeWaiter(dur)
+	defer f.removeWaiter(ch)
 	select {
 	case <-ch:
 		return true

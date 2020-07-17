@@ -469,10 +469,9 @@ func TestAcquireAndReplaceWithFakeClockAndSkew(t *testing.T) {
 	// now, advance all the way to the end of the term according to the
 	// second candidate (the second candidate should still be sleeping
 	// anyway)
-	// However, the lock-holder was supposed to wake up to refresh its
-	// lease.
-	if awoken := fc.Advance(time.Microsecond); awoken != 1 {
-		t.Errorf("too many sleepers awoken %d; wanted 1", awoken)
+	// no one should awaken since the original lock holder had its context cancelled.
+	if awoken := fc.Advance(time.Microsecond); awoken != 0 {
+		t.Errorf("too many sleepers awoken %d; wanted 0", awoken)
 	}
 	// In this test, the max clock-skew exactly matches the skew for our
 	// second candidate, so we should still need another second in
