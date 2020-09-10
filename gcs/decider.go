@@ -12,8 +12,8 @@ import (
 	"google.golang.org/api/googleapi"
 
 	"cloud.google.com/go/storage"
-	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/vimeo/leaderelection/entry"
 	"github.com/vimeo/leaderelection/storagepb"
