@@ -3,7 +3,7 @@ syntax = "proto3";
 import "google/protobuf/timestamp.proto";
 
 package leaderelection.storagepb;
-option go_package = "storagepb";
+option go_package = "github.com/vimeo/leaderelection/storagepb";
 
 message RaceEntry {
     uint64 election_number = 1;
