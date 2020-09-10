@@ -5,6 +5,7 @@ package gcs
 import (
 	"context"
 	"fmt"
+	"hash/crc32"
 	"io/ioutil"
 	"net/http"
 	"time"
@@ -38,6 +39,21 @@ func NewDecider(client *storage.Client, bucket, object string) *Decider {
 
 func (d *Decider) objHandle() *storage.ObjectHandle {
 	return d.bucket.Object(d.object)
+}
+
+var crc32cTable = crc32.MakeTable(crc32.Castagnoli)
+
+func validateRaceEntry(contents []byte, newEntry *storagepb.RaceEntry) error {
+	entrypb := storagepb.RaceEntry{}
+
+	if unmarshalErr := proto.Unmarshal(contents, &entrypb); unmarshalErr != nil {
+		return unmarshalErr
+	}
+	if !proto.Equal(newEntry, &entrypb) {
+		return fmt.Errorf("mismatched serialized and deserialized mesages: %s vs %s",
+			newEntry, &entrypb)
+	}
+	return nil
 }
 
 // WriteEntry implementations should write the entry argument to
@@ -77,9 +93,18 @@ func (d *Decider) WriteEntry(ctx context.Context, rentry *entry.RaceEntry) (entr
 		return nil, fmt.Errorf("failed to serialize entry for writing: %w", marshalErr)
 	}
 
+	crc := crc32.Checksum(newContents, crc32cTable)
+	if unmarshalEqualErr := validateRaceEntry(newContents, &entrypb); unmarshalEqualErr != nil {
+		// This should only ever fail if there's a bit-flip or
+		// memory-corruption. Panic to be safe.
+		panic(fmt.Errorf("entrypb round-trip failure: %w", unmarshalEqualErr))
+	}
+
 	writeCtx, writeCancel := context.WithDeadline(ctx, rentry.TermExpiry)
 	defer writeCancel()
 	w := obj.NewWriter(writeCtx)
+	w.CRC32C = crc
+	w.SendCRC32C = true
 
 	_, wrErr := w.Write(newContents)
 	if wrErr != nil {
