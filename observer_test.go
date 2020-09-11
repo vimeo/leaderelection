@@ -8,7 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vimeo/leaderelection/clocks"
+	"github.com/vimeo/go-clocks/fake"
+
 	"github.com/vimeo/leaderelection/entry"
 	"github.com/vimeo/leaderelection/memory"
 )
@@ -37,7 +38,7 @@ func TestObserverWithMultipleContendersAndFakeClock(t *testing.T) {
 	onElectedCalls := 0
 	wg := sync.WaitGroup{}
 	defer wg.Wait()
-	fc := clocks.NewFakeClock(time.Now())
+	fc := fake.NewClock(time.Now())
 
 	watchConfig := WatchConfig{
 		Decider: d,
@@ -161,7 +162,7 @@ func ExampleWatchConfig_Watch() {
 	defer cancel()
 	d := memory.NewDecider()
 	now := time.Date(2020, 5, 6, 0, 0, 0, 0, time.UTC)
-	fc := clocks.NewFakeClock(now)
+	fc := fake.NewClock(now)
 
 	watchConfig := WatchConfig{
 		Decider: d,
