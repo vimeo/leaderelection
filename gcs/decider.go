@@ -20,20 +20,33 @@ import (
 	"github.com/vimeo/leaderelection/storagepb"
 )
 
+type deciderOptions struct {
+	acls []storage.ACLRule
+}
+
+// DeciderOpts configures a GCS RaceDecider at construction-time
+type DeciderOpts func(*deciderOptions)
+
 // Decider implements leaderelection.RaceDecider using a specific object in a
 // specific bucket for persistence
 type Decider struct {
 	gcsClient *storage.Client
 	object    string
 	bucket    *storage.BucketHandle
+	acls      []storage.ACLRule
 }
 
 // NewDecider creates a new gcs.Decider
-func NewDecider(client *storage.Client, bucket, object string) *Decider {
+func NewDecider(client *storage.Client, bucket, object string, opts ...DeciderOpts) *Decider {
+	cfg := deciderOptions{}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
 	return &Decider{
 		gcsClient: client,
 		bucket:    client.Bucket(bucket),
 		object:    object,
+		acls:      cfg.acls,
 	}
 }
 
@@ -105,6 +118,7 @@ func (d *Decider) WriteEntry(ctx context.Context, rentry *entry.RaceEntry) (entr
 	w := obj.NewWriter(writeCtx)
 	w.CRC32C = crc
 	w.SendCRC32C = true
+	w.ACL = d.acls
 
 	_, wrErr := w.Write(newContents)
 	if wrErr != nil {
