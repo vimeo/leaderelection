@@ -12,7 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/vimeo/leaderelection/clocks"
+	clocks "github.com/vimeo/go-clocks"
+
 	"github.com/vimeo/leaderelection/entry"
 )
 

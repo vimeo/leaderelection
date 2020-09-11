@@ -10,7 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vimeo/leaderelection/clocks"
+	"github.com/vimeo/go-clocks/fake"
+	"github.com/vimeo/go-clocks/offset"
+
 	"github.com/vimeo/leaderelection/entry"
 	"github.com/vimeo/leaderelection/memory"
 )
@@ -28,7 +30,7 @@ func TestAcquireTrivialUncontendedFakeClock(t *testing.T) {
 	elected := atomicBool{}
 	onElectedCalls := 0
 
-	fc := clocks.NewFakeClock(time.Now())
+	fc := fake.NewClock(time.Now())
 
 	c := Config{
 		Decider:  d,
@@ -95,7 +97,7 @@ func TestAcquireTrivialWithMinorContentionFakeClock(t *testing.T) {
 	onElectedCalls := 0
 	wg := sync.WaitGroup{}
 	defer wg.Wait()
-	fc := clocks.NewFakeClock(time.Now())
+	fc := fake.NewClock(time.Now())
 
 	loserConfig := Config{
 		OnElected:        func(context.Context, *TimeView) { t.Error("unexpected election win of loser") },
@@ -195,7 +197,7 @@ func TestAcquireSkewedWithMinorContentionFakeClock(t *testing.T) {
 	onElectedCalls := 0
 	wg := sync.WaitGroup{}
 	defer wg.Wait()
-	fc := clocks.NewFakeClock(time.Now())
+	fc := fake.NewClock(time.Now())
 
 	const termLen = time.Second * 10
 
@@ -209,7 +211,7 @@ func TestAcquireSkewedWithMinorContentionFakeClock(t *testing.T) {
 		ConnectionParams: []byte("bimbat"),
 		MaxClockSkew:     time.Second,
 		// Use a clock-skew that's barely within the MaxClockSkew range
-		Clock: clocks.NewOffsetClock(fc, -750*time.Millisecond),
+		Clock: offset.NewOffsetClock(fc, -750*time.Millisecond),
 	}
 	const realleaderID = "yabadabadoo"
 	const realLeaderConnectionParams = "boodle_doodle"
@@ -301,10 +303,10 @@ func TestAcquireAndReplaceWithFakeClockAndSkew(t *testing.T) {
 	secondElectedCh := make(chan struct{})
 	onElectedCalls := 0
 	baseTime := time.Now()
-	fc := clocks.NewFakeClock(baseTime)
+	fc := fake.NewClock(baseTime)
 
 	const secondClockOffset = -time.Second
-	secondWinnerClock := clocks.NewOffsetClock(fc, secondClockOffset)
+	secondWinnerClock := offset.NewOffsetClock(fc, secondClockOffset)
 
 	firstTV := (*TimeView)(nil)
 	firstCtx := context.Context(nil)
@@ -554,7 +556,7 @@ func TestMultipleContendersWithFakeClockAndSkew(t *testing.T) {
 
 	contenders := make([]cState, numContenders)
 	baseTime := time.Now()
-	fc := clocks.NewFakeClock(baseTime)
+	fc := fake.NewClock(baseTime)
 	electedCh := make(chan int, 1)
 
 	for z := 0; z < numContenders; z++ {
@@ -582,7 +584,7 @@ func TestMultipleContendersWithFakeClockAndSkew(t *testing.T) {
 				ConnectionParams: []byte("bimbat" + strconv.Itoa(lz)),
 				MaxClockSkew:     time.Second,
 				// Give different candidates progressively earlier offsets
-				Clock: clocks.NewOffsetClock(fc,
+				Clock: offset.NewOffsetClock(fc,
 					-time.Duration(lz)*time.Millisecond*8),
 			},
 		}
@@ -730,7 +732,7 @@ func ExampleConfig_Acquire() {
 	d := memory.NewDecider()
 
 	now := time.Date(2020, 5, 6, 0, 0, 0, 0, time.UTC)
-	fc := clocks.NewFakeClock(now)
+	fc := fake.NewClock(now)
 
 	tvLeaderIndicator := (*TimeView)(nil)
 	electedCh := make(chan struct{})

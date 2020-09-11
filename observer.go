@@ -6,8 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/vimeo/go-retry"
-	"github.com/vimeo/leaderelection/clocks"
+	clocks "github.com/vimeo/go-clocks"
+	retry "github.com/vimeo/go-retry"
+
 	"github.com/vimeo/leaderelection/entry"
 )
 

@@ -8,8 +8,9 @@ import (
 
 	"google.golang.org/grpc/resolver"
 
+	clocks "github.com/vimeo/go-clocks"
+
 	"github.com/vimeo/leaderelection"
-	"github.com/vimeo/leaderelection/clocks"
 	"github.com/vimeo/leaderelection/entry"
 )
 

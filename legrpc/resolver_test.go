@@ -9,8 +9,9 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/vimeo/go-clocks/fake"
+
 	"github.com/vimeo/leaderelection"
-	"github.com/vimeo/leaderelection/clocks"
 	"github.com/vimeo/leaderelection/entry"
 	"github.com/vimeo/leaderelection/legrpc/testservice"
 	"github.com/vimeo/leaderelection/memory"
@@ -78,7 +79,7 @@ func TestGRPCResolver(t *testing.T) {
 			defer cancel()
 
 			baseTime := time.Now()
-			fc := clocks.NewFakeClock(baseTime)
+			fc := fake.NewClock(baseTime)
 			d := memory.NewDecider()
 
 			l, listenErr := net.Listen("tcp", "localhost:0")
