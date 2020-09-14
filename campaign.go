@@ -38,7 +38,7 @@ func (c Config) Acquire(ctx context.Context) error {
 	if c.LeaderID == "" {
 		return fmt.Errorf("missing LeaderID")
 	}
-	if c.HostPort == "" {
+	if c.HostPort == nil {
 		return fmt.Errorf("missing HostPort")
 	}
 

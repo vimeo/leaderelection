@@ -25,7 +25,7 @@ func NewDecider() *Decider {
 	return &Decider{
 		currentContents: entry.RaceEntry{
 			LeaderID:       "",
-			HostPort:       "",
+			HostPort:       nil,
 			TermExpiry:     time.Time{},
 			ElectionNumber: entry.NoElections,
 			Token:          nil,

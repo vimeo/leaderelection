@@ -90,7 +90,8 @@ type Config struct {
 	LeaderChanged func(ctx context.Context, entry entry.RaceEntry)
 
 	LeaderID string
-	HostPort string
+	// HostPort is a slice of the system's unicast interface addresses to which clients should connect.
+	HostPort []string
 
 	// Decider is the RaceDecider implementation in use
 	Decider RaceDecider

@@ -107,7 +107,7 @@ func TestGRPCResolver(t *testing.T) {
 				OnOusting:        func(context.Context) {},
 				LeaderChanged:    func(context.Context, entry.RaceEntry) {},
 				LeaderID:         "bimbat",
-				HostPort:         grpcAddr,
+				HostPort:         []string{grpcAddr},
 				Decider:          d,
 				TermLength:       time.Minute * 10,
 				MaxClockSkew:     time.Second,
