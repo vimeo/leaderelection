@@ -19,8 +19,8 @@ type LeaderToken interface {
 type RaceEntry struct {
 	// Unique ID of the leader (possible or current)
 	LeaderID string
-	// HostPort to which clients should connect
-	HostPort string
+	// HostPort is a slice of the system's unicast interface addresses to which clients should connect.
+	HostPort []string
 	// Expiration-time of the term this is an election for
 	TermExpiry time.Time
 	// Monotonically increasing Election/Generation-number

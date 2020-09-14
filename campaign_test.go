@@ -34,7 +34,7 @@ func TestAcquireTrivialUncontendedFakeClock(t *testing.T) {
 
 	c := Config{
 		Decider:  d,
-		HostPort: "127.0.0.1:8080",
+		HostPort: []string{"127.0.0.1:8080"},
 		LeaderID: "yabadabadoo",
 		OnElected: func(ctx context.Context, tv *TimeView) {
 			if elected.get() {
@@ -103,7 +103,7 @@ func TestAcquireTrivialWithMinorContentionFakeClock(t *testing.T) {
 		OnElected:        func(context.Context, *TimeView) { t.Error("unexpected election win of loser") },
 		LeaderChanged:    func(_ context.Context, e entry.RaceEntry) { t.Logf("lost election: %+v", e) },
 		LeaderID:         "nottheleader",
-		HostPort:         "127.0.0.2:7123",
+		HostPort:         []string{"127.0.0.2:7123"},
 		Decider:          d,
 		TermLength:       time.Minute * 30,
 		ConnectionParams: []byte("bimbat"),
@@ -115,7 +115,7 @@ func TestAcquireTrivialWithMinorContentionFakeClock(t *testing.T) {
 
 	c := Config{
 		Decider:  d,
-		HostPort: "127.0.0.1:8080",
+		HostPort: []string{"127.0.0.1:8080"},
 		LeaderID: realleaderID,
 		OnElected: func(ctx context.Context, tv *TimeView) {
 			if elected.get() {
@@ -205,7 +205,7 @@ func TestAcquireSkewedWithMinorContentionFakeClock(t *testing.T) {
 		OnElected:        func(context.Context, *TimeView) { t.Error("unexpected election win of loser") },
 		LeaderChanged:    func(_ context.Context, e entry.RaceEntry) { t.Logf("lost election: %+v", e) },
 		LeaderID:         "nottheleader",
-		HostPort:         "127.0.0.2:7123",
+		HostPort:         []string{"127.0.0.2:7123"},
 		Decider:          d,
 		TermLength:       termLen,
 		ConnectionParams: []byte("bimbat"),
@@ -218,7 +218,7 @@ func TestAcquireSkewedWithMinorContentionFakeClock(t *testing.T) {
 
 	c := Config{
 		Decider:  d,
-		HostPort: "127.0.0.1:8080",
+		HostPort: []string{"127.0.0.1:8080"},
 		LeaderID: realleaderID,
 		OnElected: func(ctx context.Context, tv *TimeView) {
 			if elected.get() {
@@ -333,7 +333,7 @@ func TestAcquireAndReplaceWithFakeClockAndSkew(t *testing.T) {
 			}
 		},
 		LeaderID:         "nottheleaderYet",
-		HostPort:         "127.0.0.2:7123",
+		HostPort:         []string{"127.0.0.2:7123"},
 		Decider:          d,
 		TermLength:       time.Minute * 30,
 		ConnectionParams: []byte("bimbat"),
@@ -347,7 +347,7 @@ func TestAcquireAndReplaceWithFakeClockAndSkew(t *testing.T) {
 
 	c := Config{
 		Decider:  d,
-		HostPort: "127.0.0.1:8080",
+		HostPort: []string{"127.0.0.1:8080"},
 		LeaderID: realleaderID,
 		OnElected: func(ctx context.Context, tv *TimeView) {
 			if firstElected.get() {
@@ -578,7 +578,7 @@ func TestMultipleContendersWithFakeClockAndSkew(t *testing.T) {
 					contenders[lz].oustingCh <- struct{}{}
 				},
 				LeaderID:         "maybeLeader" + strconv.Itoa(lz),
-				HostPort:         "127.0.0.2:" + strconv.Itoa(7123+lz),
+				HostPort:         []string{"127.0.0.2:" + strconv.Itoa(7123+lz)},
 				Decider:          d,
 				TermLength:       termLength,
 				ConnectionParams: []byte("bimbat" + strconv.Itoa(lz)),
@@ -738,7 +738,7 @@ func ExampleConfig_Acquire() {
 	electedCh := make(chan struct{})
 	c := Config{
 		Decider:  d,
-		HostPort: "127.0.0.1:8080",
+		HostPort: []string{"127.0.0.1:8080"},
 		LeaderID: "yabadabadoo",
 		OnElected: func(ctx context.Context, tv *TimeView) {
 			fmt.Printf("I won! Leader term expiration: %s; held: %t\n",

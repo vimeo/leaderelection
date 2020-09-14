@@ -22,7 +22,7 @@ func TestDecider(t *testing.T) {
 	if initialEntry.LeaderID != "" {
 		t.Errorf("non-empty leaderID: %q", initialEntry.LeaderID)
 	}
-	if initialEntry.HostPort != "" {
+	if initialEntry.HostPort != nil {
 		t.Errorf("non-empty HostPort: %q", initialEntry.HostPort)
 	}
 	if (initialEntry.TermExpiry != time.Time{}) {
@@ -46,7 +46,7 @@ func TestDecider(t *testing.T) {
 	firstExpire := time.Now().Add(time.Minute)
 	firstWrittenEntry := entry.RaceEntry{
 		LeaderID:       "foobar",
-		HostPort:       "watthat:8080",
+		HostPort:       []string{"watthat:8080"},
 		TermExpiry:     firstExpire,
 		ElectionNumber: initialEntry.ElectionNumber + 1,
 		Token:          initialEntry.Token,
@@ -120,10 +120,19 @@ func TestDecider(t *testing.T) {
 		t.Errorf("unexpected leaderID: %q, expected %q",
 			finalEntry.LeaderID, secondWrittenEntry.LeaderID)
 	}
-	if finalEntry.HostPort != secondWrittenEntry.HostPort {
-		t.Errorf("unexpected HostPort: %q, expected %q",
-			finalEntry.HostPort, secondWrittenEntry.HostPort)
+
+	if len(finalEntry.HostPort) != len(secondWrittenEntry.HostPort) {
+		t.Errorf("unexpected HostPort length: %q, expected %q",
+			len(finalEntry.HostPort), len(secondWrittenEntry.HostPort))
 	}
+
+	for i, hostPort := range finalEntry.HostPort {
+		if secondWrittenEntry.HostPort[i] != hostPort {
+			t.Errorf("unexpected HostPort: %q, expected %q",
+				finalEntry.HostPort, len(secondWrittenEntry.HostPort))
+		}
+	}
+
 	if tdiff := finalEntry.TermExpiry.Sub(secondWrittenEntry.TermExpiry); tdiff != 0 {
 		t.Errorf("unexpected TermExpiry time: %s, expected %s (difference %s)",
 			finalEntry.TermExpiry, secondWrittenEntry.TermExpiry, tdiff)

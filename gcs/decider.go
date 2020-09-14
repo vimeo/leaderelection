@@ -170,7 +170,7 @@ func (d *Decider) ReadCurrent(ctx context.Context) (*entry.RaceEntry, error) {
 	case storage.ErrObjectNotExist:
 		return &entry.RaceEntry{
 			LeaderID:       "",
-			HostPort:       "",
+			HostPort:       nil,
 			TermExpiry:     time.Time{},
 			ElectionNumber: entry.NoElections,
 			Token:          &token{self: d, generation: 0},

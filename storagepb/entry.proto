@@ -8,7 +8,7 @@ option go_package = "github.com/vimeo/leaderelection/storagepb";
 message RaceEntry {
     uint64 election_number = 1;
     string leader_id = 2;
-    string host_port = 3;
+    repeated string host_port = 3;
     google.protobuf.Timestamp term_expiry = 4;
     // connection_parameters should be used as a side-channel for
     // leader-election metadata for the legrpc package, we'll use it for storing

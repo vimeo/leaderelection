@@ -71,7 +71,7 @@ func TestObserverWithMultipleContendersAndFakeClock(t *testing.T) {
 		OnElected:        func(context.Context, *TimeView) { t.Error("unexpected election win of loser") },
 		LeaderChanged:    func(_ context.Context, e entry.RaceEntry) { t.Logf("lost election: %+v", e) },
 		LeaderID:         "nottheleader",
-		HostPort:         "127.0.0.2:7123",
+		HostPort:         []string{"127.0.0.2:7123"},
 		Decider:          d,
 		TermLength:       time.Minute * 30,
 		ConnectionParams: []byte("bimbat"),
@@ -83,7 +83,7 @@ func TestObserverWithMultipleContendersAndFakeClock(t *testing.T) {
 
 	c := Config{
 		Decider:  d,
-		HostPort: "127.0.0.1:8080",
+		HostPort: []string{"127.0.0.1:8080"},
 		LeaderID: realleaderID,
 		OnElected: func(ctx context.Context, tv *TimeView) {
 			if elected.get() {
@@ -173,7 +173,7 @@ func ExampleWatchConfig_Watch() {
 
 	d.WriteEntry(ctx, &entry.RaceEntry{
 		LeaderID:         "fimbat",
-		HostPort:         "test:80",
+		HostPort:         []string{"test:80"},
 		TermExpiry:       now.Add(time.Hour),
 		ElectionNumber:   c.ElectionNumber + 1,
 		ConnectionParams: nil,
@@ -193,5 +193,5 @@ func ExampleWatchConfig_Watch() {
 	<-ch
 
 	// Output:
-	// test:80 2020-05-06 01:00:00 +0000 UTC
+	// [test:80] 2020-05-06 01:00:00 +0000 UTC
 }

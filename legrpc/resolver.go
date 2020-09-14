@@ -52,15 +52,19 @@ func (r *Resolver) handleEntry(rentry *entry.RaceEntry) {
 		return
 	}
 
+	state.Addresses = make([]resolver.Address, len(rentry.HostPort))
 	// If the current term hasn't expired yet, set the
 	// hostport appropriately
-	state.Addresses = []resolver.Address{resolver.Address{
-		Addr: rentry.HostPort,
-		// this field intentionally left blank (per advice in
-		// the library's docstring)
-		ServerName: "",
-		Attributes: nil,
-	}}
+	for i, hostPort := range rentry.HostPort {
+		state.Addresses[i] = resolver.Address{
+			Addr: hostPort,
+			// this field intentionally left blank (per advice in
+			// the library's docstring)
+			ServerName: "",
+			Attributes: nil,
+		}
+	}
+
 	if len(rentry.ConnectionParams) > 0 {
 		state.ServiceConfig = r.cc.ParseServiceConfig(string(rentry.ConnectionParams))
 	}
