@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-func TestGetSelfHostPort(t *testing.T) {
+func TestSelfHostPorts(t *testing.T) {
 	selfPort := "8080"
-	hostPorts, hostPortErr := GetSelfHostPort(selfPort)
+	hostPorts, hostPortErr := SelfHostPorts(selfPort)
 	if hostPortErr != nil {
 		t.Errorf("unexpected error getting self IP address: %s", hostPortErr)
 	}
