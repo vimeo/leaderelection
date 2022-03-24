@@ -150,7 +150,7 @@ type failedAcquisitionErr struct {
 }
 
 func (f *failedAcquisitionErr) Error() string {
-	return fmt.Sprintf("failed to acquire lock: %s", f.err)
+	return "failed to acquire lock: " + f.err.Error()
 }
 
 func (f *failedAcquisitionErr) Unwrap() error {
