@@ -20,10 +20,17 @@ Currently, this implementation only has two implementations:
 The [`Config`] struct contains callbacks and tunables for the leader election
 "campaign".
 
-Each process that would like to acquire leadership must register callbacks for
-all three of `OnElected`, `OnOusting` and `LeaderChanged`, as well as specify
-unique `LeaderID` and `HostPort`s (the latter two are used for communication, so
-some use-cases may be able to ignore them)
+Each "candidate" contending for leadership must register an `OnElected` callback
+and a `LeaderID` (which is often a random string). Additionally, it is
+recommended to specify `HostPort`, which makes it possible to leverage the
+`legrpc` package and have other clients using the `WatchConfig{}.Watch()` method
+connect to the current leader. (it can also be useful for debugging)
+
+Optionally, one can specify `LeaderChanged` and `OnOusting` callbacks which are
+called when the current leader changes and an instance has lost/ceded its
+election, respectively. If set, `OnOusting` is guaranteed to be called after
+losing leadership, whether that's by losing the election, or by its context
+being canceled.
 
 The `TermLength` is the length of time that a leader acquires leadership for,
 and the length of any extension. This duration should be long enough to get
