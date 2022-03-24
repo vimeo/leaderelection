@@ -578,7 +578,7 @@ func TestMultipleContendersWithFakeClockAndSkew(t *testing.T) {
 					contenders[lz].oustingCh <- struct{}{}
 				},
 				LeaderID:         "maybeLeader" + strconv.Itoa(lz),
-				HostPort:         []string{"127.0.0.2:" + strconv.Itoa(7123+lz)},
+				HostPort:         nil,
 				Decider:          d,
 				TermLength:       termLength,
 				ConnectionParams: []byte("bimbat" + strconv.Itoa(lz)),

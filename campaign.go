@@ -38,9 +38,6 @@ func (c Config) Acquire(ctx context.Context) error {
 	if c.LeaderID == "" {
 		return fmt.Errorf("missing LeaderID")
 	}
-	if len(c.HostPort) < 1 {
-		return fmt.Errorf("missing HostPort")
-	}
 
 	// Note that this method has a non-pointer receiver so we get a private
 	// copy for use with the other methods, thus avoiding possible races
