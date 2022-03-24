@@ -58,7 +58,7 @@ func (c Config) Acquire(ctx context.Context) error {
 	wg := sync.WaitGroup{}
 	defer wg.Wait()
 	for {
-		switch acquiredEntry, err := cmp.acquireOnce(ctx, lastEntry); err {
+		switch acquiredEntry, aqErr := cmp.acquireOnce(ctx, lastEntry); aqErr {
 		case nil:
 			b.Reset()
 			if c.LeaderChanged != nil {
@@ -108,7 +108,7 @@ func (c Config) Acquire(ctx context.Context) error {
 				// WriteEntry should fail immediately.
 			}
 		default:
-			return err
+			return aqErr
 		}
 		if lastEntry.ElectionNumber == entry.NoElections {
 			// There haven't been any elections yet, just loop and
