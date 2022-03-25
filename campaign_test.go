@@ -726,6 +726,176 @@ func TestMultipleContendersWithFakeClockAndSkew(t *testing.T) {
 	cancel()
 }
 
+type deadliningRaceDecider struct {
+	inner RaceDecider
+	// Toggle errors for reads and writes separately
+	deadlineWrite bool
+	cancelWrite   bool
+	deadlineRead  bool
+	cancelRead    bool
+}
+
+// WriteEntry implementations should write the entry argument to
+// stable-storage in a transactional-way such that only one contender
+// wins per-election/term
+// The interface{} return value is a new token if the write succeeded.
+func (d *deadliningRaceDecider) WriteEntry(ctx context.Context, entry *entry.RaceEntry) (entry.LeaderToken, error) {
+	switch {
+	case d.cancelWrite:
+		return nil, fmt.Errorf("won the lottery: %w", context.Canceled)
+	case d.deadlineWrite:
+		return nil, fmt.Errorf("lost the lottery: %w", context.DeadlineExceeded)
+	default:
+	}
+	return d.inner.WriteEntry(ctx, entry)
+}
+
+// ReadCurrent should provide the latest version of RaceEntry available
+// and put any additional information needed to ensure transactional
+// behavior in the Token-field.
+func (d *deadliningRaceDecider) ReadCurrent(ctx context.Context) (*entry.RaceEntry, error) {
+	switch {
+	case d.cancelRead:
+		return nil, fmt.Errorf("won the lottery: %w", context.Canceled)
+	case d.deadlineRead:
+		return nil, fmt.Errorf("lost the lottery: %w", context.DeadlineExceeded)
+	default:
+	}
+	return d.inner.ReadCurrent(ctx)
+}
+
+func TestAcquireTrivialWithMinorContentionFakeClockAndDeadliningRaceDecider(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	d := deadliningRaceDecider{
+		inner: memory.NewDecider(),
+	}
+	elected := atomicBool{}
+	onElectedCalls := 0
+	wg := sync.WaitGroup{}
+	defer wg.Wait()
+	fc := fake.NewClock(time.Now())
+
+	loserConfig := Config{
+		OnElected:        func(context.Context, *TimeView) { t.Error("unexpected election win of loser") },
+		LeaderChanged:    nil,
+		OnOusting:        nil,
+		LeaderID:         "nottheleader",
+		HostPort:         []string{"127.0.0.2:7123"},
+		Decider:          d.inner,
+		TermLength:       time.Minute * 30,
+		ConnectionParams: []byte("bimbat"),
+		MaxClockSkew:     time.Second,
+		Clock:            fc,
+	}
+	const realleaderID = "yabadabadoo"
+	const realLeaderConnectionParams = "boodle_doodle"
+
+	c := Config{
+		Decider:  &d,
+		HostPort: []string{"127.0.0.1:8080"},
+		LeaderID: realleaderID,
+		OnElected: func(ctx context.Context, tv *TimeView) {
+			if elected.get() {
+				t.Error("OnElected called while still elected")
+			}
+			elected.set(true)
+			onElectedCalls++
+		},
+		OnOusting: func(ctx context.Context) {
+			elected.set(false)
+		},
+		// use a nil LeaderChanged
+		LeaderChanged:    nil,
+		TermLength:       time.Minute * 30,
+		MaxClockSkew:     time.Second,
+		ConnectionParams: []byte(realLeaderConnectionParams),
+		Clock:            fc,
+	}
+
+	if sleepers := fc.NumSleepers(); sleepers != 0 {
+		t.Errorf("unexpected number of goroutines sleeping; want %d; got %d", 0, sleepers)
+	}
+
+	// make the racedecider return DeadlineExceeded
+	d.deadlineWrite = true
+
+	acquireCh := make(chan error, 1)
+	go func() {
+		acquireCh <- c.Acquire(ctx)
+	}()
+
+	// we can guarantee that both the attempt to write and the attempt to read should have failed with DeadlineExceeded here.
+	// wait for the backoff sleep at the end of the loop.
+	fc.AwaitSleepers(1)
+	if sleepers := fc.NumSleepers(); sleepers != 1 {
+		t.Errorf("unexpected number of goroutines sleeping; want %d; got %d", 1, sleepers)
+	}
+
+	// switch to canceled errors (now that everyone's asleep, this is safe)
+	d.deadlineWrite = false
+	d.cancelWrite = true
+	d.deadlineRead = true
+	// advance by 2ms to rouse the Acquire loop (the base backoff is 1ms)
+	if woken := fc.Advance(2 * time.Millisecond); woken != 1 {
+		t.Errorf("unexpected number of goroutines awoken by 2ms advance: %d; expected 1", woken)
+	}
+
+	// wait for Acquire to go back to sleep
+	fc.AwaitSleepers(1)
+	if sleepers := fc.NumSleepers(); sleepers != 1 {
+		t.Errorf("unexpected number of goroutines sleeping; want %d; got %d", 1, sleepers)
+	}
+
+	// now that everyone's asleep again, let the RaceDecider do its job
+	d.cancelWrite = false
+	d.deadlineRead = false
+
+	// advance by 2ms to rouse the Acquire loop (the base backoff is 1ms,
+	// and this is backoff 2 with an exponent of 1.2, so 2ms is still enough)
+	if woken := fc.Advance(2 * time.Millisecond); woken != 1 {
+		t.Errorf("unexpected number of goroutines awoken by 2ms advance: %d; expected 1", woken)
+	}
+
+	// now we should be able to actually win.
+
+	// wait until manageWin goes to sleep waiting for the next time it needs to awaken.
+	fc.AwaitSleepers(1)
+	if sleepers := fc.NumSleepers(); sleepers != 1 {
+		t.Errorf("unexpected number of goroutines sleeping; want %d; got %d", 1, sleepers)
+	}
+	// now that the winning candidate is sleeping after having won, spin
+	// off another goroutine with a loser to contend on the lock.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := loserConfig.Acquire(ctx); err != context.Canceled {
+			t.Errorf("non-cancel error: %s", err)
+		}
+
+	}()
+
+	// Advance from our initial timestamp up to half-way into the term.
+	// (MaxClockSkew past the point we're expecting to wake-up)
+	// This should wake up our sleeping goroutine
+	fc.Advance(c.TermLength / 2)
+
+	// wait for manageWin to go back to sleep again, and then cancel the context
+	fc.AwaitSleepers(2)
+	if sleepers := fc.NumSleepers(); sleepers != 2 {
+		t.Errorf("unexpected number of goroutines sleeping; want %d; got %d", 2, sleepers)
+	}
+	cancel()
+	if err := <-acquireCh; err != context.Canceled {
+		t.Errorf("failed to acquire: %s", err)
+	}
+
+	if onElectedCalls != 1 {
+		t.Errorf("unexpected number of OnElected calls: %d", onElectedCalls)
+	}
+
+}
 func ExampleConfig_Acquire() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

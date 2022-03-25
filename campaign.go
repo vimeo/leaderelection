@@ -87,14 +87,20 @@ func (c Config) Acquire(ctx context.Context) error {
 			}
 		case errAcquireFailed:
 			entry, readErr := c.Decider.ReadCurrent(ctx)
-			switch readErr {
-			case nil:
+			switch {
+			case readErr == nil:
 				lastEntry = entry
 				if c.LeaderChanged != nil {
 					c.LeaderChanged(ctx, *entry)
 				}
-			case context.DeadlineExceeded, context.Canceled:
-				return ctx.Err()
+			case errors.Is(readErr, context.DeadlineExceeded), errors.Is(readErr, context.Canceled):
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+					// the read failed with a context error, but our context wasn't canceled (it may
+					// have been internal to the RaceDecider) Continue.
+				}
 			default:
 				// failed to read with an error. just
 				// fall-through and retry for now.
@@ -197,9 +203,20 @@ func (c *campaign) acquireOnce(ctx context.Context, lastEntry *entry.RaceEntry) 
 	case FailedAcquisitionErr:
 		return nil, errAcquireFailed
 	default:
-		return nil, writeErr
+		// Check whether this is the result of hitting a deadline/context-cancellation.
+		switch {
+		case errors.Is(writeErr, context.DeadlineExceeded), errors.Is(writeErr, context.Canceled):
+			select {
+			case <-ctx.Done():
+				return nil, writeErr
+			default:
+				// if it's a deadline, that isn't ours, just say that we've failed to acquire the lock.
+				return nil, errAcquireFailed
+			}
+		default:
+			return nil, fmt.Errorf("failed to write entry: %w", writeErr)
+		}
 	}
-
 }
 
 func (c *campaign) refreshLock(ctx context.Context, electedEntry *entry.RaceEntry, tv *TimeView) (*entry.RaceEntry, error) {
