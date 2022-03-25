@@ -61,11 +61,13 @@ func (c Config) Acquire(ctx context.Context) error {
 		switch acquiredEntry, err := cmp.acquireOnce(ctx, lastEntry); err {
 		case nil:
 			b.Reset()
-			wg.Add(1)
-			go func(le entry.RaceEntry) {
-				defer wg.Done()
-				c.LeaderChanged(ctx, le)
-			}(*lastEntry)
+			if c.LeaderChanged != nil {
+				wg.Add(1)
+				go func(le entry.RaceEntry) {
+					defer wg.Done()
+					c.LeaderChanged(ctx, le)
+				}(*lastEntry)
+			}
 
 			le, mgErr := cmp.manageWin(ctx, acquiredEntry, &wg)
 			lastEntry = le
@@ -88,7 +90,9 @@ func (c Config) Acquire(ctx context.Context) error {
 			switch readErr {
 			case nil:
 				lastEntry = entry
-				c.LeaderChanged(ctx, *entry)
+				if c.LeaderChanged != nil {
+					c.LeaderChanged(ctx, *entry)
+				}
 			case context.DeadlineExceeded, context.Canceled:
 				return ctx.Err()
 			default:
@@ -131,7 +135,9 @@ func (c *campaign) manageWin(ctx context.Context, winningEntry *entry.RaceEntry,
 	electedCtx, electedCancel := context.WithCancel(ctx)
 	// Run the ousting callback after we cancel the OnElected callback's
 	// context.
-	defer func() { wg.Add(1); go func() { defer wg.Done(); c.c.OnOusting(ctx) }() }()
+	if c.c.OnOusting != nil {
+		defer func() { wg.Add(1); go func() { defer wg.Done(); c.c.OnOusting(ctx) }() }()
+	}
 	defer electedCancel()
 	wg.Add(1)
 	go func(ctx context.Context) { defer wg.Done(); c.c.OnElected(ctx, &tv) }(electedCtx)
