@@ -145,6 +145,10 @@ func (c *campaign) manageWin(ctx context.Context, winningEntry *entry.RaceEntry,
 		defer func() { wg.Add(1); go func() { defer wg.Done(); c.c.OnOusting(ctx) }() }()
 	}
 	defer electedCancel()
+	// Wait for any outstanding goroutines before running OnElected (in particular, wait for
+	// previous OnOusting callbacks to complete.
+	wg.Wait()
+
 	wg.Add(1)
 	go func(ctx context.Context) { defer wg.Done(); c.c.OnElected(ctx, &tv) }(electedCtx)
 	finalEntry, refreshErr := c.refreshLock(ctx, winningEntry, &tv)
@@ -224,14 +228,27 @@ func (c *campaign) refreshLock(ctx context.Context, electedEntry *entry.RaceEntr
 	entry := &entryVal
 	// we have the lock, we should try to keep it
 	for {
+		// Check whether we still have some time left on the term before we try to do any
+		// real work (if we're past the end of the term, we've lost and need to reacquire
+		// anyway)
+		if c.clock.Until(entry.TermExpiry) < 0 {
+			return entry, context.DeadlineExceeded
+		}
 		newEntry, refreshErr := c.refreshLockOnce(ctx, entry)
 		switch refreshErr {
 		case nil:
 			tv.Set(newEntry.TermExpiry)
 			entry = newEntry
-		case context.DeadlineExceeded, context.Canceled, errAcquireFailed:
+		case context.Canceled, errAcquireFailed:
 			return entry, refreshErr
 		default:
+			if errors.Is(refreshErr, context.Canceled) {
+				return entry, context.Canceled
+			}
+			// Check whether we still have some time left on the term before we try to sleep
+			if c.clock.Until(entry.TermExpiry) < 0 {
+				return entry, context.DeadlineExceeded
+			}
 		}
 
 		// wake up in half the interval until the leadership term

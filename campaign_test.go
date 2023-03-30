@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -545,7 +546,7 @@ func TestMultipleContendersWithFakeClockAndSkew(t *testing.T) {
 	d := memory.NewDecider()
 
 	type cState struct {
-		tv        *TimeView
+		tv        atomic.Value
 		ctx       context.Context
 		elected   atomicBool
 		c         Config
@@ -566,7 +567,7 @@ func TestMultipleContendersWithFakeClockAndSkew(t *testing.T) {
 			c: Config{
 				OnElected: func(ctx context.Context, tv *TimeView) {
 					t.Logf("election win by %d", lz)
-					contenders[lz].tv = tv
+					contenders[lz].tv.Store(tv)
 					contenders[lz].ctx = ctx
 					contenders[lz].elected.set(true)
 					electedCh <- lz
@@ -575,7 +576,11 @@ func TestMultipleContendersWithFakeClockAndSkew(t *testing.T) {
 				OnOusting: func(ctx context.Context) {
 					t.Logf("%d ousted", lz)
 					contenders[lz].elected.set(false)
-					contenders[lz].oustingCh <- struct{}{}
+					select {
+					case contenders[lz].oustingCh <- struct{}{}:
+					default:
+						t.Logf("ousting channel would block (contender %d)", lz)
+					}
 				},
 				LeaderID:         "maybeLeader" + strconv.Itoa(lz),
 				HostPort:         nil,
@@ -591,7 +596,7 @@ func TestMultipleContendersWithFakeClockAndSkew(t *testing.T) {
 	}
 
 	if sleepers := fc.NumSleepers(); sleepers != 0 {
-		t.Errorf("unexpected number of goroutines sleeping; want %d; got %d", 0, sleepers)
+		t.Errorf("fail: unexpected number of goroutines sleeping; want %d; got %d", 0, sleepers)
 	}
 
 	for z := range contenders {
@@ -609,16 +614,16 @@ func TestMultipleContendersWithFakeClockAndSkew(t *testing.T) {
 	// wait until manageWin goes to sleep waiting for the next time it needs to awaken.
 	fc.AwaitSleepers(numContenders)
 	if sleepers := fc.NumSleepers(); sleepers != numContenders {
-		t.Errorf("unexpected number of goroutines sleeping; want %d; got %d", numContenders, sleepers)
+		t.Errorf("fail: unexpected number of goroutines sleeping; want %d; got %d", numContenders, sleepers)
 	}
 
 	// wait for the first leader's OnElected callback to complete
 	leaderID := <-electedCh
 	{
 
-		leaderTV := contenders[leaderID].tv
-		if leaderTV == nil {
-			t.Fatalf("first candidate's timeview is nil")
+		leaderTV := contenders[leaderID].tv.Load()
+		if leaderTV == nil || leaderTV.(*TimeView) == nil {
+			t.Fatalf("fail: first candidate's timeview is nil")
 		}
 
 		// verify that no one else thinks they won this election
@@ -626,7 +631,7 @@ func TestMultipleContendersWithFakeClockAndSkew(t *testing.T) {
 		for {
 			select {
 			case otherLeaderID := <-electedCh:
-				t.Errorf("second winner of election %d; already have %d",
+				t.Errorf("fail: second winner of election %d; already have %d",
 					otherLeaderID, leaderID)
 			default:
 				break OTHERLEADERSLOOP
@@ -640,12 +645,12 @@ func TestMultipleContendersWithFakeClockAndSkew(t *testing.T) {
 			}
 		}
 		if len(leaders) > 1 {
-			t.Errorf("multiple leaders: %v", leaders)
+			t.Errorf("fail: multiple leaders: %v", leaders)
 		}
 
 		expectedTermEnd := baseTime.Add(termLength - time.Duration(leaderID)*time.Millisecond*8)
-		if termEnd := leaderTV.Get(); !termEnd.Equal(expectedTermEnd) {
-			t.Errorf("unexpected term end in TimeView: %s; expected %s",
+		if termEnd := leaderTV.(*TimeView).Get(); !termEnd.Equal(expectedTermEnd) {
+			t.Errorf("fail: unexpected term end in TimeView: %s; expected %s",
 				termEnd, expectedTermEnd)
 		}
 	}
@@ -659,7 +664,7 @@ func TestMultipleContendersWithFakeClockAndSkew(t *testing.T) {
 	// to go to sleep awaiting the next term.
 	fc.AwaitSleepers(numContenders)
 	if sleepers := fc.NumSleepers(); sleepers != numContenders {
-		t.Errorf("unexpected number of goroutines sleeping; want %d; got %d",
+		t.Errorf("fail: unexpected number of goroutines sleeping; want %d; got %d",
 			numContenders, sleepers)
 	}
 
@@ -670,17 +675,17 @@ func TestMultipleContendersWithFakeClockAndSkew(t *testing.T) {
 		// we know that the looping/acquisition/manageWin goroutines
 		// are all sleeping. Find out whether the old leader extended
 		// its lease.
-		oldleaderTV := contenders[leaderID].tv
-		if oldleaderTV.Get().Equal(oldTermEnd) {
+		oldleaderTV := contenders[leaderID].tv.Load()
+		if oldleaderTV.(*TimeView).Get().Equal(oldTermEnd) {
 			// new leader; wait for its elected cb to complete and
 			// the old one's ousting channel to get a message
 			<-contenders[oldLeader].oustingCh
 			leaderID = <-electedCh
 		}
 
-		leaderTV := contenders[leaderID].tv
+		leaderTV := contenders[leaderID].tv.Load().(*TimeView)
 		if leaderTV == nil {
-			t.Fatalf("leader's timeview is nil")
+			t.Fatalf("fail: leader's timeview is nil")
 		}
 
 		expectedTermEnd := baseTime.Add(2*termLength + maxjitterTime - time.Duration(leaderID)*time.Millisecond*8)
@@ -688,7 +693,7 @@ func TestMultipleContendersWithFakeClockAndSkew(t *testing.T) {
 		// timestamp returned by our TimeView
 		if termEnd := leaderTV.Get(); !termEnd.Equal(
 			expectedTermEnd) {
-			t.Errorf("unexpected term end in TimeView: %s; expected %s",
+			t.Errorf("fail: unexpected term end in TimeView: %s; expected %s",
 				termEnd, expectedTermEnd)
 		}
 
@@ -697,8 +702,10 @@ func TestMultipleContendersWithFakeClockAndSkew(t *testing.T) {
 		for {
 			select {
 			case otherLeaderID := <-electedCh:
-				t.Errorf("second winner of election %d; already have %d",
-					otherLeaderID, leaderID)
+				if otherLeaderID != leaderID {
+					t.Errorf("fail: second winner of election %d; already have %d",
+						otherLeaderID, leaderID)
+				}
 			default:
 				break OTHERLEADERSLOOP2
 			}
@@ -710,15 +717,15 @@ func TestMultipleContendersWithFakeClockAndSkew(t *testing.T) {
 			if contenders[z].elected.get() {
 				cbleaders = append(cbleaders, z)
 			}
-			if contenders[z].tv != nil && contenders[z].tv.Get().After(contenders[z].c.Clock.Now()) {
+			if contenders[z].tv.Load() != nil && contenders[z].tv.Load().(*TimeView).Get().After(contenders[z].c.Clock.Now()) {
 				tvleaders = append(tvleaders, z)
 			}
 		}
 		if len(cbleaders) > 1 {
-			t.Errorf("multiple leaders by callback: %v", cbleaders)
+			t.Errorf("fail: multiple leaders by callback: %v", cbleaders)
 		}
 		if len(tvleaders) > 1 {
-			t.Errorf("multiple leaders by TimeView: %v", tvleaders)
+			t.Errorf("fail: multiple leaders by TimeView: %v", tvleaders)
 		}
 
 	}
@@ -886,6 +893,7 @@ func TestAcquireTrivialWithMinorContentionFakeClockAndDeadliningRaceDecider(t *t
 	if sleepers := fc.NumSleepers(); sleepers != 2 {
 		t.Errorf("unexpected number of goroutines sleeping; want %d; got %d", 2, sleepers)
 	}
+
 	cancel()
 	if err := <-acquireCh; err != context.Canceled {
 		t.Errorf("failed to acquire: %s", err)
@@ -895,6 +903,318 @@ func TestAcquireTrivialWithMinorContentionFakeClockAndDeadliningRaceDecider(t *t
 		t.Errorf("unexpected number of OnElected calls: %d", onElectedCalls)
 	}
 
+}
+
+func TestAcquireFakeClockAndDeadliningRaceDecider(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	d := deadliningRaceDecider{
+		inner: memory.NewDecider(),
+	}
+	elected := atomicBool{}
+	onElectedCalls := uint64(0)
+	wg := sync.WaitGroup{}
+	defer wg.Wait()
+	fc := fake.NewClock(time.Now())
+
+	loserOK := atomicBool{}
+
+	loserConfig := Config{
+		OnElected: func(context.Context, *TimeView) {
+			if loserOK.get() {
+				return
+			}
+			t.Error("unexpected election win of loser")
+		},
+		LeaderChanged:    nil,
+		OnOusting:        nil,
+		LeaderID:         "nottheleader",
+		HostPort:         []string{"127.0.0.2:7123"},
+		Decider:          d.inner,
+		TermLength:       time.Minute * 30,
+		ConnectionParams: []byte("bimbat"),
+		MaxClockSkew:     time.Second,
+		Clock:            fc,
+	}
+	const realleaderID = "yabadabadoo"
+	const realLeaderConnectionParams = "boodle_doodle"
+
+	oustCh := make(chan struct{}, 3)
+	c := Config{
+		Decider:  &d,
+		HostPort: []string{"127.0.0.1:8080"},
+		LeaderID: realleaderID,
+		OnElected: func(ctx context.Context, tv *TimeView) {
+			if elected.get() {
+				t.Error("OnElected called while still elected")
+			}
+			elected.set(true)
+			atomic.AddUint64(&onElectedCalls, 1)
+		},
+		OnOusting: func(ctx context.Context) {
+			elected.set(false)
+			select {
+			case oustCh <- struct{}{}:
+			default:
+				t.Errorf("filled up ousting channel (capacity %d)", cap(oustCh))
+			}
+		},
+		// use a nil LeaderChanged
+		LeaderChanged:    nil,
+		TermLength:       time.Minute * 30,
+		MaxClockSkew:     time.Second,
+		ConnectionParams: []byte(realLeaderConnectionParams),
+		Clock:            fc,
+	}
+
+	if sleepers := fc.NumSleepers(); sleepers != 0 {
+		t.Errorf("unexpected number of goroutines sleeping; want %d; got %d", 0, sleepers)
+	}
+
+	// make the racedecider return DeadlineExceeded
+	d.deadlineWrite = true
+
+	acquireCh := make(chan error, 1)
+	go func() {
+		acquireCh <- c.Acquire(ctx)
+	}()
+
+	// we can guarantee that both the attempt to write and the attempt to read should have failed with DeadlineExceeded here.
+	// wait for the backoff sleep at the end of the loop.
+	fc.AwaitSleepers(1)
+	if sleepers := fc.NumSleepers(); sleepers != 1 {
+		t.Errorf("unexpected number of goroutines sleeping; want %d; got %d", 1, sleepers)
+	}
+
+	// switch to canceled errors (now that everyone's asleep, this is safe)
+	d.deadlineWrite = false
+	d.cancelWrite = true
+	d.deadlineRead = true
+	// advance by 2ms to rouse the Acquire loop (the base backoff is 1ms)
+	if woken := fc.Advance(2 * time.Millisecond); woken != 1 {
+		t.Errorf("unexpected number of goroutines awoken by 2ms advance: %d; expected 1", woken)
+	}
+
+	// wait for Acquire to go back to sleep
+	fc.AwaitSleepers(1)
+	if sleepers := fc.NumSleepers(); sleepers != 1 {
+		t.Errorf("unexpected number of goroutines sleeping; want %d; got %d", 1, sleepers)
+	}
+
+	// now that everyone's asleep again, let the RaceDecider do its job
+	d.cancelWrite = false
+	d.deadlineRead = false
+
+	// advance by 2ms to rouse the Acquire loop (the base backoff is 1ms,
+	// and this is backoff 2 with an exponent of 1.2, so 2ms is still enough)
+	if woken := fc.Advance(2 * time.Millisecond); woken != 1 {
+		t.Errorf("unexpected number of goroutines awoken by 2ms advance: %d; expected 1", woken)
+	}
+
+	// now we should be able to actually win.
+
+	// wait until manageWin goes to sleep waiting for the next time it needs to awaken.
+	fc.AwaitSleepers(1)
+	if sleepers := fc.NumSleepers(); sleepers != 1 {
+		t.Errorf("unexpected number of goroutines sleeping; want %d; got %d", 1, sleepers)
+	}
+	// now that the winning candidate is sleeping after having won, spin
+	// off another goroutine with a loser to contend on the lock.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := loserConfig.Acquire(ctx); err != context.Canceled {
+			t.Errorf("non-cancel error: %s", err)
+		}
+
+	}()
+
+	// Advance from our initial timestamp up to half-way into the term.
+	// (MaxClockSkew past the point we're expecting to wake-up)
+	// This should wake up our sleeping goroutine
+	fc.Advance(c.TermLength / 2)
+
+	// wait for manageWin to go back to sleep again, and then cancel the context
+	fc.AwaitSleepers(2)
+	if sleepers := fc.NumSleepers(); sleepers != 2 {
+		t.Errorf("unexpected number of goroutines sleeping; want %d; got %d", 2, sleepers)
+	}
+
+	// Advance two whole term-lengths
+	loserOK.set(true)
+	if awoken := fc.Advance(c.TermLength * 2); awoken != 2 {
+		t.Errorf("unexpected number of goroutines awoken (%d); expected 2", awoken)
+	}
+	<-oustCh
+
+	cancel()
+
+	if err := <-acquireCh; err != context.Canceled {
+		t.Errorf("failed to acquire: %s", err)
+	}
+
+	if electCalls := atomic.LoadUint64(&onElectedCalls); electCalls > 2 || electCalls < 1 {
+		t.Errorf("unexpected number of OnElected calls: %d", electCalls)
+	}
+}
+func TestAcquireFakeClockAndDeadliningRaceDeciderCanceledLoss(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	d := deadliningRaceDecider{
+		inner: memory.NewDecider(),
+	}
+	elected := atomicBool{}
+	onElectedCalls := 0
+	wg := sync.WaitGroup{}
+	defer wg.Wait()
+	fc := fake.NewClock(time.Now())
+
+	loserOK := atomicBool{}
+
+	loserConfig := Config{
+		OnElected: func(context.Context, *TimeView) {
+			if loserOK.get() {
+				return
+			}
+			t.Error("unexpected election win of loser")
+		},
+		LeaderChanged:    nil,
+		OnOusting:        nil,
+		LeaderID:         "nottheleader",
+		HostPort:         []string{"127.0.0.2:7123"},
+		Decider:          d.inner,
+		TermLength:       time.Minute * 30,
+		ConnectionParams: []byte("bimbat"),
+		MaxClockSkew:     time.Second,
+		Clock:            fc,
+	}
+	const realleaderID = "yabadabadoo"
+	const realLeaderConnectionParams = "boodle_doodle"
+
+	oustCh := make(chan struct{}, 3)
+	c := Config{
+		Decider:  &d,
+		HostPort: []string{"127.0.0.1:8080"},
+		LeaderID: realleaderID,
+		OnElected: func(ctx context.Context, tv *TimeView) {
+			if elected.get() {
+				t.Error("OnElected called while still elected")
+			}
+			elected.set(true)
+			onElectedCalls++
+		},
+		OnOusting: func(ctx context.Context) {
+			elected.set(false)
+			select {
+			case oustCh <- struct{}{}:
+			default:
+				t.Errorf("filled up ousting channel (capacity %d)", cap(oustCh))
+			}
+		},
+		// use a nil LeaderChanged
+		LeaderChanged:    nil,
+		TermLength:       time.Minute * 30,
+		MaxClockSkew:     time.Second,
+		ConnectionParams: []byte(realLeaderConnectionParams),
+		Clock:            fc,
+	}
+
+	if sleepers := fc.NumSleepers(); sleepers != 0 {
+		t.Errorf("unexpected number of goroutines sleeping; want %d; got %d", 0, sleepers)
+	}
+
+	// make the racedecider return DeadlineExceeded
+	d.deadlineWrite = true
+
+	acquireCh := make(chan error, 1)
+	go func() {
+		acquireCh <- c.Acquire(ctx)
+	}()
+
+	// we can guarantee that both the attempt to write and the attempt to read should have failed with DeadlineExceeded here.
+	// wait for the backoff sleep at the end of the loop.
+	fc.AwaitSleepers(1)
+	if sleepers := fc.NumSleepers(); sleepers != 1 {
+		t.Errorf("unexpected number of goroutines sleeping; want %d; got %d", 1, sleepers)
+	}
+
+	// switch to canceled errors (now that everyone's asleep, this is safe)
+	d.deadlineWrite = false
+	d.cancelWrite = true
+	d.deadlineRead = true
+	// advance by 2ms to rouse the Acquire loop (the base backoff is 1ms)
+	if woken := fc.Advance(2 * time.Millisecond); woken != 1 {
+		t.Errorf("unexpected number of goroutines awoken by 2ms advance: %d; expected 1", woken)
+	}
+
+	// wait for Acquire to go back to sleep
+	fc.AwaitSleepers(1)
+	if sleepers := fc.NumSleepers(); sleepers != 1 {
+		t.Errorf("unexpected number of goroutines sleeping; want %d; got %d", 1, sleepers)
+	}
+
+	// now that everyone's asleep again, let the RaceDecider do its job
+	d.cancelWrite = false
+	d.deadlineRead = false
+
+	// advance by 2ms to rouse the Acquire loop (the base backoff is 1ms,
+	// and this is backoff 2 with an exponent of 1.2, so 2ms is still enough)
+	if woken := fc.Advance(2 * time.Millisecond); woken != 1 {
+		t.Errorf("unexpected number of goroutines awoken by 2ms advance: %d; expected 1", woken)
+	}
+
+	// now we should be able to actually win.
+
+	// wait until manageWin goes to sleep waiting for the next time it needs to awaken.
+	fc.AwaitSleepers(1)
+	if sleepers := fc.NumSleepers(); sleepers != 1 {
+		t.Errorf("unexpected number of goroutines sleeping; want %d; got %d", 1, sleepers)
+	}
+	// now that the winning candidate is sleeping after having won, spin
+	// off another goroutine with a loser to contend on the lock.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := loserConfig.Acquire(ctx); err != context.Canceled {
+			t.Errorf("non-cancel error: %s", err)
+		}
+
+	}()
+
+	// Advance from our initial timestamp up to half-way into the term.
+	// (MaxClockSkew past the point we're expecting to wake-up)
+	// This should wake up our sleeping goroutine
+	fc.Advance(c.TermLength / 2)
+
+	// wait for manageWin to go back to sleep again, and then cancel the context
+	fc.AwaitSleepers(2)
+	if sleepers := fc.NumSleepers(); sleepers != 2 {
+		t.Errorf("unexpected number of goroutines sleeping; want %d; got %d", 2, sleepers)
+	}
+
+	// Advance half a term-length and enable deadline-errors on write
+	d.cancelWrite = true
+	loserOK.set(true)
+	if awoken := fc.Advance(c.TermLength / 2); awoken != 1 {
+		t.Errorf("unexpected number of goroutines awoken (%d); expected 1", awoken)
+	}
+	<-oustCh
+
+	if elected.get() {
+		t.Errorf("unexpectedly elected after advancing past term end")
+	}
+
+	cancel()
+
+	if err := <-acquireCh; err != context.Canceled {
+		t.Errorf("failed to acquire: %s", err)
+	}
+
+	if onElectedCalls != 1 {
+		t.Errorf("unexpected number of OnElected calls: %d", onElectedCalls)
+	}
 }
 func ExampleConfig_Acquire() {
 	ctx, cancel := context.WithCancel(context.Background())
