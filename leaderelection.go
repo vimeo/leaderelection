@@ -41,13 +41,19 @@ func NewTimeView(c clocks.Clock) *TimeView {
 	if c == nil {
 		c = clocks.DefaultClock()
 	}
-	now := c.Now()
+	return NewTimeViewWithExpiration(c, time.Duration(0))
+}
+
+// NewTimeViewWithExpiration constructs a TimeView with a defined expiration time
+func NewTimeViewWithExpiration(c clocks.Clock, expirationTime time.Duration) *TimeView {
+	if c == nil {
+		c = clocks.DefaultClock()
+	}
 	tv := TimeView{
 		clock: c,
 	}
-	tv.Set(now)
+	tv.Set(c.Now().Add(expirationTime))
 	return &tv
-
 }
 
 // Clock returns the clocks.Clock instance against-which times are measured.
